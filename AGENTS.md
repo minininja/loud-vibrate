@@ -38,9 +38,11 @@ Build an Android app that changes ringer mode based on nearby WiFi SSIDs, with p
 * If an android device is available via ADB please install the application after every successful build.
 ## Build
 
+```
 ./gradlew assembleDebug         # Build debug APK
 ./gradlew test                   # Run unit tests
 ./gradlew lint                   # Run lint checks
+```
 
 ## Requirements
 
