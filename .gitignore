@@ -1,0 +1,65 @@
+# Android
+*.apk
+*.aab
+*.dex
+*.class
+*.log
+*.ap_
+*.aab_
+bin/
+gen/
+out/
+build/
+*.pro
+*.hprof
+*.keystore
+!debug.keystore
+*local.properties
+*.kotlin_module
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.nav/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.classpath
+.project
+.settings/
+*.metadata
+bin/
+tmp/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Misc
+*.swp
+*.swo
+*~
+.catch
+*.orig
+*.bak
+*.old
+*.pid
+*.seed
+*.pid.lock
