@@ -20,7 +20,6 @@ class SSIDRingerService : Service() {
     private lateinit var wifiManager: WifiManager
     private lateinit var notificationManager: NotificationManager
     private val handler = Handler(Looper.getMainLooper())
-    private var scanning = false
     private val previouslySeenSsids = mutableSetOf<String>()
 
     private val scanReceiver = object : BroadcastReceiver() {
@@ -34,6 +33,11 @@ class SSIDRingerService : Service() {
             }
         }
     }
+
+    inner class LocalBinder : android.os.Binder() {
+        fun getService(): SSIDRingerService = this@SSIDRingerService
+    }
+    private val binder = LocalBinder()
 
     override fun onCreate() {
         super.onCreate()
@@ -49,12 +53,12 @@ class SSIDRingerService : Service() {
             unregisterReceiver(scanReceiver)
         } catch (_: IllegalArgumentException) {}
         registerReceiver(scanReceiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION))
-        startPeriodicScan()
-        Log.d(TAG, "Service started, scanning initiated")
+        refreshScanSettings()
+        Log.d(TAG, "Service started")
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder? = binder
 
     override fun onDestroy() {
         try { unregisterReceiver(scanReceiver) } catch (_: Exception) {}
@@ -64,19 +68,25 @@ class SSIDRingerService : Service() {
         super.onDestroy()
     }
 
-    private fun startPeriodicScan() {
-        scanning = true
-        scanNow()
-        scheduleNextScan()
+    fun refreshScanSettings() {
+        val prefs = getSharedPreferences("ssid_ringer_prefs", Context.MODE_PRIVATE)
+        val pollingEnabled = prefs.getBoolean(PREF_POLLING_ENABLED, false)
+        handler.removeCallbacksAndMessages(null)
+        if (pollingEnabled) {
+            val interval = prefs.getLong(PREF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL_MS)
+            Log.d(TAG, "Polling enabled — forcing scans every ${interval}ms")
+            scanNow()
+            schedulePolling(interval)
+        } else {
+            Log.d(TAG, "Polling disabled — relying on system scan broadcasts")
+        }
     }
 
-    private fun scheduleNextScan() {
+    private fun schedulePolling(interval: Long) {
         handler.postDelayed({
-            if (scanning) {
-                scanNow()
-                scheduleNextScan()
-            }
-        }, SCAN_INTERVAL_MS)
+            scanNow()
+            schedulePolling(interval)
+        }, interval)
     }
 
     private fun scanNow() {
@@ -200,6 +210,8 @@ class SSIDRingerService : Service() {
         private const val TAG = "SSIDRinger"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ssid_monitor"
-        private const val SCAN_INTERVAL_MS = 30_000L
+        const val PREF_POLLING_ENABLED = "polling_enabled"
+        const val PREF_POLLING_INTERVAL = "polling_interval"
+        private const val DEFAULT_POLLING_INTERVAL_MS = 30_000L
     }
 }

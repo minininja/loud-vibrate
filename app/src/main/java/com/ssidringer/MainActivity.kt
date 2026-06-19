@@ -32,8 +32,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var emptyState: TextView
     private lateinit var serviceStatus: TextView
     private lateinit var serviceToggle: SwitchMaterial
+    private lateinit var toolbar: com.google.android.material.appbar.MaterialToolbar
     private var serviceBound = false
     private var serviceIntent: Intent? = null
+    private var ringerService: SSIDRingerService? = null
 
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
@@ -59,11 +61,14 @@ class MainActivity : AppCompatActivity() {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            ringerService = (service as SSIDRingerService.LocalBinder).getService()
+            ringerService?.refreshScanSettings()
             serviceBound = true
             updateServiceStatus()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            ringerService = null
             serviceBound = false
             updateServiceStatus()
         }
@@ -75,6 +80,9 @@ class MainActivity : AppCompatActivity() {
 
         store = SSIDRuleStore(this)
         prefs = getSharedPreferences("ssid_ringer_prefs", Context.MODE_PRIVATE)
+
+        toolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
 
         rulesList = findViewById(R.id.rules_list)
         emptyState = findViewById(R.id.empty_state)
@@ -118,6 +126,7 @@ class MainActivity : AppCompatActivity() {
         rulesList.adapter = adapter
 
         fabAdd.setOnClickListener { openAddEdit(null) }
+        findViewById<android.view.View>(R.id.settings_button).setOnClickListener { showSettingsDialog() }
 
         serviceToggle.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_SERVICE_ENABLED, isChecked).apply()
@@ -133,6 +142,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshList()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (serviceBound) {
+            ringerService = null
+            try {
+                unbindService(serviceConnection)
+            } catch (_: Exception) {}
+            serviceBound = false
+        }
     }
 
     override fun onResume() {
@@ -301,6 +321,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopService() {
         try {
+            ringerService = null
             if (serviceBound) {
                 unbindService(serviceConnection)
             }
@@ -315,6 +336,57 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateServiceStatus() {
         serviceStatus.text = if (serviceBound) "Monitoring Active" else "Monitoring Stopped"
+    }
+
+    private fun showSettingsDialog() {
+        val currentEnabled = prefs.getBoolean(SSIDRingerService.PREF_POLLING_ENABLED, false)
+        val currentInterval = prefs.getLong(SSIDRingerService.PREF_POLLING_INTERVAL, 30_000L)
+
+        val intervalOptions = arrayOf("15s", "30s", "1min", "2min", "5min")
+        val intervalValues = longArrayOf(15_000L, 30_000L, 60_000L, 120_000L, 300_000L)
+        val defaultIndex = intervalValues.indexOf(currentInterval).coerceAtLeast(0)
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
+        val pollingSwitch = dialogView.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.polling_switch)
+        val intervalLabel = dialogView.findViewById<TextView>(R.id.interval_label)
+        val intervalDropdown = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.interval_dropdown)
+
+        pollingSwitch.isChecked = currentEnabled
+        intervalLabel.isEnabled = currentEnabled
+        intervalDropdown.isEnabled = currentEnabled
+        intervalDropdown.text = intervalOptions[defaultIndex]
+
+        var selectedIntervalIdx = defaultIndex
+
+        pollingSwitch.setOnCheckedChangeListener { _, isChecked ->
+            intervalLabel.isEnabled = isChecked
+            intervalDropdown.isEnabled = isChecked
+        }
+
+        intervalDropdown.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Polling Interval")
+                .setSingleChoiceItems(intervalOptions, selectedIntervalIdx) { dialog, which ->
+                    selectedIntervalIdx = which
+                    intervalDropdown.text = intervalOptions[which]
+                    dialog.dismiss()
+                }
+                .setPositiveButton("OK", null)
+                .show()
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Scan Settings")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                prefs.edit()
+                    .putBoolean(SSIDRingerService.PREF_POLLING_ENABLED, pollingSwitch.isChecked)
+                    .putLong(SSIDRingerService.PREF_POLLING_INTERVAL, intervalValues[selectedIntervalIdx])
+                    .apply()
+                ringerService?.refreshScanSettings()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     companion object {
